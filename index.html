@@ -1,0 +1,668 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="theme-color" content="#0f172a" />
+  <title>Snake — Minimal, Modern</title>
+  <style>
+    :root{
+      --bg: #0f172a;          /* slate-900 */
+      --panel: #111827cc;     /* gray-900 with alpha */
+      --border: #1f2937;      /* gray-800 */
+      --text: #e5e7eb;        /* gray-200 */
+      --muted: #94a3b8;       /* slate-400 */
+      --accent: #22c55e;      /* green-500 */
+      --accent-2: #ef4444;    /* red-500 */
+      --grid: #0b1225;        /* darker bg for board */
+      --snake: #22c55e;
+      --food: #ef4444;
+      --shadow: 0 10px 30px rgba(0,0,0,0.4);
+    }
+    * { box-sizing: border-box; }
+    html, body {
+      height: 100%;
+      margin: 0;
+      background: var(--bg);
+      color: var(--text);
+      font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, "Apple Color Emoji", "Segoe UI Emoji";
+    }
+    a { color: inherit; }
+    .app {
+      min-height: 100%;
+      display: grid;
+      grid-template-rows: auto 1fr auto;
+      place-items: center;
+      gap: 16px;
+      padding: 24px;
+    }
+    header {
+      width: 100%;
+      max-width: 860px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+    }
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      font-weight: 700;
+      letter-spacing: 0.3px;
+    }
+    .dot {
+      width: 12px; height: 12px; border-radius: 50%;
+      background: var(--accent);
+      box-shadow: 0 0 24px 2px #22c55e55;
+    }
+    .panel {
+      width: 100%;
+      max-width: 860px;
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 16px;
+      justify-items: center;
+    }
+    .hud {
+      width: 100%;
+      max-width: 520px;
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 10px 12px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      backdrop-filter: blur(6px);
+      box-shadow: var(--shadow);
+    }
+    .stats {
+      display: flex; gap: 14px; align-items: center; font-variant-numeric: tabular-nums;
+    }
+    .pill {
+      display: inline-flex; align-items: center; gap: 8px;
+      padding: 6px 10px;
+      border-radius: 999px;
+      background: #0b1225;
+      border: 1px solid var(--border);
+      color: var(--muted);
+      font-size: 13px;
+    }
+    .pill strong { color: var(--text); }
+    button {
+      appearance: none;
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      background: #0b1225;
+      color: var(--text);
+      padding: 10px 14px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: transform .05s ease, background .2s ease, border-color .2s ease;
+    }
+    button:hover { background: #0f172a; }
+    button:active { transform: translateY(1px); }
+    .board-wrap {
+      position: relative;
+      width: 100%;
+      max-width: 520px;
+      aspect-ratio: 1 / 1;
+      background: var(--grid);
+      border-radius: 16px;
+      overflow: hidden;
+      border: 1px solid var(--border);
+      box-shadow: var(--shadow);
+    }
+    canvas {
+      width: 100%; height: 100%;
+      display: block;
+    }
+    .overlay {
+      position: absolute; inset: 0; display: grid; place-items: center;
+      pointer-events: none;
+    }
+    .overlay .card {
+      pointer-events: auto;
+      background: #0b1225dd;
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 16px 18px;
+      text-align: center;
+      backdrop-filter: blur(6px);
+    }
+    .muted { color: var(--muted); font-size: 14px; }
+    .toast {
+      position: fixed;
+      left: 50%;
+      transform: translateX(-50%);
+      bottom: 24px;
+      background: #0b1225ee;
+      border: 1px solid var(--border);
+      color: var(--text);
+      padding: 10px 14px;
+      border-radius: 10px;
+      box-shadow: var(--shadow);
+      z-index: 50;
+      display: none;
+    }
+    .controls {
+      display: grid; gap: 6px; justify-items: center; margin-top: 10px;
+      grid-template-columns: 64px 64px 64px;
+      user-select: none;
+    }
+    .controls button {
+      width: 64px; height: 64px; border-radius: 12px; font-size: 20px; background: #0b1225; border: 1px solid var(--border);
+    }
+    .controls button:active { background: #0f172a; }
+    .controls .spacer { visibility: hidden; }
+    footer {
+      opacity: 0.8; font-size: 12px; color: var(--muted); text-align: center;
+    }
+    @media (max-width: 520px) {
+      .hud { font-size: 14px; }
+      .pill { font-size: 12px; }
+    }
+  </style>
+</head>
+<body>
+  <div class="app">
+    <header>
+      <div class="brand"><span class="dot"></span>Snake</div>
+      <div class="muted">Arrow keys / WASD • Tap controls on mobile • P to pause</div>
+    </header>
+
+    <main class="panel">
+      <div class="hud">
+        <div class="stats">
+          <span class="pill">Score <strong id="score">0</strong></span>
+          <span class="pill">Best <strong id="best">0</strong></span>
+          <span class="pill">Speed <strong id="speed">8</strong></span>
+          <span class="pill">Grid <strong id="grid">20</strong></span>
+        </div>
+        <div class="actions">
+          <button id="pauseBtn" aria-label="Pause or resume">Pause</button>
+          <button id="restartBtn" aria-label="Restart">Restart</button>
+        </div>
+      </div>
+
+      <div class="board-wrap" id="board">
+        <canvas id="canvas" aria-label="Snake game board" role="img"></canvas>
+        <div class="overlay" id="overlay" hidden>
+          <div class="card">
+            <h3 id="overlayTitle" style="margin:0 0 6px 0;">Game Over</h3>
+            <div class="muted" id="overlaySubtitle">Press Restart or Space</div>
+            <div class="controls" id="dpad" aria-label="Touch controls" hidden>
+              <span class="spacer"></span>
+              <button data-dir="up" aria-label="Up">▲</button>
+              <span class="spacer"></span>
+              <button data-dir="left" aria-label="Left">◀</button>
+              <button data-dir="down" aria-label="Down">▼</button>
+              <button data-dir="right" aria-label="Right">▶</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </main>
+
+    <footer>
+      Minimal Snake. No trackers. Works offline after first load. Configurable via ?url=<config>.
+    </footer>
+  </div>
+
+  <div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+  <script>
+    // Game configuration with sensible defaults
+    const defaultConfig = {
+      speed: 8,          // tiles per second
+      grid: 20,          // cells per side
+      wrap: false,       // wrap-around edges
+      snakeColor: getCSS('--snake') || '#22c55e',
+      foodColor:  getCSS('--food')  || '#ef4444',
+      background: null,  // color or image url
+      showDpad: true     // show on-screen controls on touch devices
+    };
+
+    let cfg = { ...defaultConfig };
+    let state; // game state object
+    let rafId = 0;
+    const dpr = Math.max(1, Math.min(window.devicePixelRatio || 1, 3));
+
+    const canvas = document.getElementById('canvas');
+    const ctx = canvas.getContext('2d');
+
+    const scoreEl = document.getElementById('score');
+    const bestEl = document.getElementById('best');
+    const speedEl = document.getElementById('speed');
+    const gridEl = document.getElementById('grid');
+    const pauseBtn = document.getElementById('pauseBtn');
+    const restartBtn = document.getElementById('restartBtn');
+    const overlay = document.getElementById('overlay');
+    const overlayTitle = document.getElementById('overlayTitle');
+    const overlaySubtitle = document.getElementById('overlaySubtitle');
+    const dpad = document.getElementById('dpad');
+    const toastEl = document.getElementById('toast');
+
+    // Utility: CSS var getter
+    function getCSS(name) {
+      return getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+    }
+
+    // Utility: Toasts
+    let toastTimeout;
+    function toast(msg, ms = 2200) {
+      clearTimeout(toastTimeout);
+      toastEl.textContent = msg;
+      toastEl.style.display = 'block';
+      toastTimeout = setTimeout(() => { toastEl.style.display = 'none'; }, ms);
+    }
+
+    // Utility: clamp
+    const clamp = (v, min, max) => Math.max(min, Math.min(max, v));
+
+    // Canvas sizing and grid math
+    let tileSize = 16, originX = 0, originY = 0;
+
+    function resizeCanvas() {
+      // Determine CSS size
+      const max = Math.min(520, Math.min(window.innerWidth - 32, window.innerHeight - 200));
+      const cssSize = clamp(Math.floor(max), 280, 520);
+      canvas.style.width = cssSize + 'px';
+      canvas.style.height = cssSize + 'px';
+      canvas.width = Math.floor(cssSize * dpr);
+      canvas.height = Math.floor(cssSize * dpr);
+
+      tileSize = Math.floor(Math.min(canvas.width, canvas.height) / cfg.grid);
+      originX = Math.floor((canvas.width - tileSize * cfg.grid) / 2);
+      originY = Math.floor((canvas.height - tileSize * cfg.grid) / 2);
+      draw(); // redraw with new sizes
+    }
+
+    window.addEventListener('resize', () => {
+      resizeCanvas();
+      draw();
+    }, { passive: true });
+
+    // Storage for best score
+    function bestKey() {
+      return `snake_best_v1_${cfg.grid}_${cfg.wrap ? 'wrap' : 'walls'}`;
+    }
+    function getBest() {
+      return parseInt(localStorage.getItem(bestKey()) || '0', 10);
+    }
+    function setBest(v) {
+      localStorage.setItem(bestKey(), String(v));
+    }
+
+    // Init or reset the game state
+    function resetGame() {
+      const mid = Math.floor(cfg.grid / 2);
+      const initialLen = 3;
+      const body = [];
+      for (let i = initialLen - 1; i >= 0; i--) {
+        body.push({ x: mid - i, y: mid });
+      }
+      state = {
+        running: true,
+        paused: false,
+        dead: false,
+        score: 0,
+        speed: cfg.speed,
+        lastTick: performance.now(),
+        acc: 0,
+        dir: { x: 1, y: 0 },
+        nextDir: { x: 1, y: 0 },
+        snake: body,
+        food: null,
+      };
+      placeFood();
+      updateHud();
+      hideOverlay();
+      cancelAnimationFrame(rafId);
+      rafId = requestAnimationFrame(loop);
+      draw();
+    }
+
+    function updateHud() {
+      scoreEl.textContent = state ? state.score : '0';
+      bestEl.textContent = getBest();
+      speedEl.textContent = cfg.speed;
+      gridEl.textContent = cfg.grid;
+      pauseBtn.textContent = state && state.paused ? 'Resume' : 'Pause';
+    }
+
+    function showOverlay(title, subtitle = '') {
+      overlayTitle.textContent = title;
+      overlaySubtitle.textContent = subtitle;
+      overlay.hidden = false;
+      // Show touch dpad when overlay visible and device is touch or configured
+      const wantDpad = cfg.showDpad && ('ontouchstart' in window || navigator.maxTouchPoints > 0);
+      dpad.hidden = !wantDpad;
+    }
+    function hideOverlay() {
+      overlay.hidden = true;
+    }
+
+    // Game logic
+    function placeFood() {
+      const set = new Set(state.snake.map(p => p.x + ',' + p.y));
+      let x, y, tries = 0;
+      do {
+        x = Math.floor(Math.random() * cfg.grid);
+        y = Math.floor(Math.random() * cfg.grid);
+        tries++;
+        if (tries > 10000) break; // extremely unlikely
+      } while (set.has(x + ',' + y));
+      state.food = { x, y };
+    }
+
+    function loop(ts) {
+      if (!state || !state.running) return;
+      const stepMs = 1000 / state.speed;
+      state.acc += (ts - state.lastTick);
+      state.lastTick = ts;
+
+      if (!state.paused && !state.dead) {
+        while (state.acc >= stepMs) {
+          tick();
+          state.acc -= stepMs;
+        }
+      }
+
+      draw();
+      rafId = requestAnimationFrame(loop);
+    }
+
+    function tick() {
+      // apply direction (no 180 turns)
+      const dir = state.nextDir;
+      state.dir = dir;
+
+      const head = state.snake[0];
+      let nx = head.x + dir.x;
+      let ny = head.y + dir.y;
+
+      if (cfg.wrap) {
+        if (nx < 0) nx = cfg.grid - 1;
+        if (ny < 0) ny = cfg.grid - 1;
+        if (nx >= cfg.grid) nx = 0;
+        if (ny >= cfg.grid) ny = 0;
+      } else {
+        if (nx < 0 || ny < 0 || nx >= cfg.grid || ny >= cfg.grid) {
+          return kill();
+        }
+      }
+
+      // self collision
+      for (let i = 0; i < state.snake.length; i++) {
+        const s = state.snake[i];
+        if (s.x === nx && s.y === ny) {
+          return kill();
+        }
+      }
+
+      // move
+      state.snake.unshift({ x: nx, y: ny });
+
+      // eat?
+      if (state.food && nx === state.food.x && ny === state.food.y) {
+        state.score += 1;
+        if (state.score > getBest()) setBest(state.score);
+        // subtle speed-up every 4 points, cap at 20
+        if (state.score % 4 === 0) {
+          state.speed = clamp(state.speed + 1, 4, 24);
+          cfg.speed = state.speed;
+        }
+        placeFood();
+      } else {
+        state.snake.pop();
+      }
+      updateHud();
+    }
+
+    function kill() {
+      state.dead = true;
+      state.running = true; // keep loop for overlay animation if needed
+      showOverlay('Game Over', 'Press Restart or Space');
+    }
+
+    // Rendering
+    function draw() {
+      if (!ctx) return;
+      ctx.save();
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+      // background
+      ctx.fillStyle = '#0b1225';
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+      // subtle grid background
+      const r = 8 * dpr;
+      ctx.fillStyle = 'rgba(255,255,255,0.02)';
+      for (let i = 0; i < cfg.grid; i++) {
+        for (let j = 0; j < cfg.grid; j++) {
+          const x = originX + i * tileSize;
+          const y = originY + j * tileSize;
+          ctx.beginPath();
+          ctx.roundRect(x + 1, y + 1, tileSize - 2, tileSize - 2, r);
+          ctx.fill();
+        }
+      }
+
+      // food
+      if (state && state.food) {
+        const f = state.food;
+        const x = originX + f.x * tileSize;
+        const y = originY + f.y * tileSize;
+        const pad = Math.floor(tileSize * 0.2);
+        const rad = Math.floor(tileSize * 0.25);
+        ctx.fillStyle = cfg.foodColor;
+        ctx.beginPath();
+        ctx.roundRect(x + pad, y + pad, tileSize - pad * 2, tileSize - pad * 2, rad);
+        ctx.fill();
+      }
+
+      // snake
+      if (state && state.snake) {
+        ctx.fillStyle = cfg.snakeColor;
+        for (let i = 0; i < state.snake.length; i++) {
+          const s = state.snake[i];
+          const x = originX + s.x * tileSize;
+          const y = originY + s.y * tileSize;
+          const tpad = Math.floor(tileSize * 0.12);
+          const trad = Math.floor(tileSize * 0.28);
+          ctx.beginPath();
+          ctx.roundRect(x + tpad, y + tpad, tileSize - tpad * 2, tileSize - tpad * 2, trad);
+          ctx.fill();
+        }
+
+        // head highlight
+        const head = state.snake[0];
+        if (head) {
+          const hx = originX + head.x * tileSize + tileSize / 2;
+          const hy = originY + head.y * tileSize + tileSize / 2;
+          const eye = Math.max(2, Math.floor(tileSize * 0.08));
+          const offset = Math.floor(tileSize * 0.18);
+          // eyes oriented by direction
+          const dx = state.dir.x;
+          const dy = state.dir.y;
+          ctx.fillStyle = 'rgba(0,0,0,0.3)';
+          ctx.beginPath();
+          ctx.arc(hx + (dx ? dx * offset : -offset), hy + (dy ? dy * offset : -offset), eye, 0, Math.PI * 2);
+          ctx.arc(hx + (dx ? dx * offset : offset), hy + (dy ? dy * offset : offset), eye, 0, Math.PI * 2);
+          ctx.fill();
+        }
+      }
+
+      ctx.restore();
+    }
+
+    // Input handlers
+    function setDirection(dx, dy) {
+      if (!state || state.dead) return;
+      // Prevent reversing directly
+      if (state.dir.x === -dx && state.dir.y === -dy) return;
+      state.nextDir = { x: dx, y: dy };
+    }
+
+    window.addEventListener('keydown', (e) => {
+      if (!state) return;
+      const k = e.key.toLowerCase();
+      if (k === 'arrowup' || k === 'w') { e.preventDefault(); setDirection(0, -1); }
+      else if (k === 'arrowdown' || k === 's') { e.preventDefault(); setDirection(0, 1); }
+      else if (k === 'arrowleft' || k === 'a') { e.preventDefault(); setDirection(-1, 0); }
+      else if (k === 'arrowright' || k === 'd') { e.preventDefault(); setDirection(1, 0); }
+      else if (k === ' ' || k === 'spacebar') { e.preventDefault(); if (state.dead) resetGame(); else togglePause(); }
+      else if (k === 'p') { e.preventDefault(); togglePause(); }
+    }, { passive: false });
+
+    pauseBtn.addEventListener('click', () => togglePause());
+    restartBtn.addEventListener('click', () => resetGame());
+
+    function togglePause() {
+      if (!state || state.dead) return;
+      state.paused = !state.paused;
+      updateHud();
+      if (state.paused) {
+        showOverlay('Paused', 'Press Resume, P, or Space');
+      } else {
+        hideOverlay();
+      }
+    }
+
+    // Touch D-Pad
+    dpad.addEventListener('click', (e) => {
+      const btn = e.target.closest('button[data-dir]');
+      if (!btn) return;
+      const dir = btn.getAttribute('data-dir');
+      if (dir === 'up') setDirection(0, -1);
+      if (dir === 'down') setDirection(0, 1);
+      if (dir === 'left') setDirection(-1, 0);
+      if (dir === 'right') setDirection(1, 0);
+      if (state && (state.paused || state.dead)) {
+        // resume on input
+        if (state.dead) resetGame();
+        else togglePause();
+      }
+    });
+
+    // Handle ?url=... configuration
+    async function applyConfigFromUrl() {
+      const params = new URLSearchParams(location.search);
+      const url = params.get('url');
+      if (!url) return;
+
+      try {
+        const controller = new AbortController();
+        const tid = setTimeout(() => controller.abort(), 8000);
+        const res = await fetch(url, { signal: controller.signal, mode: 'cors' });
+        clearTimeout(tid);
+
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const ctype = (res.headers.get('content-type') || '').toLowerCase();
+
+        if (ctype.includes('application/json') || ctype.includes('text/json') || url.endsWith('.json')) {
+          const json = await res.json();
+          const before = JSON.stringify(cfg);
+          // Recognized keys
+          if ('speed' in json) cfg.speed = clamp(parseInt(json.speed, 10) || defaultConfig.speed, 4, 30);
+          if ('grid' in json || 'gridSize' in json) {
+            const g = parseInt(json.grid ?? json.gridSize, 10);
+            if (Number.isFinite(g)) cfg.grid = clamp(g, 10, 60);
+          }
+          if ('wrap' in json) cfg.wrap = !!json.wrap;
+          if ('snakeColor' in json) cfg.snakeColor = String(json.snakeColor);
+          if ('foodColor' in json) cfg.foodColor = String(json.foodColor);
+          if ('background' in json) setBackground(json.background);
+          if ('showDpad' in json) cfg.showDpad = !!json.showDpad;
+
+          // Re-init layout and game to apply new grid/speed/colors
+          resizeCanvas();
+          resetGame();
+          toast('Config loaded from url');
+          return;
+        }
+
+        // If looks like an image, use as background image
+        if (ctype.startsWith('image/') || /\.(png|jpg|jpeg|gif|webp|svg)$/i.test(url)) {
+          setBackground(url);
+          toast('Background image loaded');
+          return;
+        }
+
+        // Fallback: treat as text config "key=value" lines
+        const text = await res.text();
+        const lines = text.split(/\r?\n/);
+        for (const ln of lines) {
+          const m = ln.match(/^\s*([a-zA-Z]+)\s*=\s*(.+)\s*$/);
+          if (!m) continue;
+          const k = m[1].toLowerCase();
+          const v = m[2].trim();
+          if (k === 'speed') cfg.speed = clamp(parseInt(v,10)||cfg.speed, 4, 30);
+          if (k === 'grid') cfg.grid = clamp(parseInt(v,10)||cfg.grid, 10, 60);
+          if (k === 'wrap') cfg.wrap = /true|1|yes/i.test(v);
+          if (k === 'snakecolor') cfg.snakeColor = v;
+          if (k === 'foodcolor') cfg.foodColor = v;
+          if (k === 'background') setBackground(v);
+        }
+        resizeCanvas();
+        resetGame();
+        toast('Config (text) loaded');
+      } catch (err) {
+        toast('Failed to load config');
+        // Fail gracefully — no config applied
+        console.warn('Config load error:', err);
+      }
+    }
+
+    function isColorString(str) {
+      const s = new Option().style;
+      s.color = '';
+      s.color = str;
+      return s.color !== '';
+    }
+
+    function setBackground(val) {
+      if (!val) return;
+      if (isColorString(val)) {
+        document.body.style.background = val;
+      } else {
+        document.body.style.backgroundImage = `url("${val}")`;
+        document.body.style.backgroundSize = 'cover';
+        document.body.style.backgroundPosition = 'center';
+      }
+    }
+
+    // Ensure create rounded rect path on older canvases
+    if (!Path2D.prototype.roundRect && CanvasRenderingContext2D.prototype.roundRect == null) {
+      CanvasRenderingContext2D.prototype.roundRect = function(x, y, w, h, r) {
+        const rr = Array.isArray(r) ? r : [r, r, r, r];
+        const [r1, r2, r3, r4] = rr.map(v => Math.max(0, Math.min(v || 0, Math.min(w, h) / 2)));
+        this.beginPath();
+        this.moveTo(x + r1, y);
+        this.lineTo(x + w - r2, y);
+        this.quadraticCurveTo(x + w, y, x + w, y + r2);
+        this.lineTo(x + w, y + h - r3);
+        this.quadraticCurveTo(x + w, y + h, x + w - r3, y + h);
+        this.lineTo(x + r4, y + h);
+        this.quadraticCurveTo(x, y + h, x, y + h - r4);
+        this.lineTo(x, y + r1);
+        this.quadraticCurveTo(x, y, x + r1, y);
+        this.closePath();
+        return this;
+      }
+    }
+
+    // Boot
+    (async function boot() {
+      resizeCanvas();
+      // Apply ?url config if present
+      await applyConfigFromUrl();
+      // Start game
+      resetGame();
+    })();
+  </script>
+</body>
+</html>
